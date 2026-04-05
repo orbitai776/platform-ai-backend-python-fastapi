@@ -79,9 +79,9 @@ jobs:
             docker run -d \
               --name $CONTAINER \
               --restart unless-stopped \
-              -p $PORT:3000 \
+              -p $PORT:8000 \
               -e ENV=$ENV \
-              -e PORT=3000 \
+              -e PORT=8000 \
               -e OPENAI_URL=$OPENAI_URL \
               -e OPENAI_API_KEY=$OPENAI_API_KEY \
               -e OPENAI_MODEL=$OPENAI_MODEL \
