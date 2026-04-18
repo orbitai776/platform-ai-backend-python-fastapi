@@ -1,4 +1,4 @@
-FROM python:3.14-slim AS builder
+FROM python:3.11-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -17,13 +17,12 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY requirements-prod.txt ./
 RUN pip install --upgrade pip setuptools wheel \
     && pip install --no-cache-dir --no-compile -r requirements-prod.txt \
-    && python -m pip uninstall -y pip setuptools wheel \
     && find /opt/venv -type d -name "__pycache__" -prune -exec rm -rf {} + \
     && find /opt/venv -type f -name "*.pyc" -delete \
     && find /opt/venv -type d -name "tests" -prune -exec rm -rf {} +
 
 
-FROM python:3.14-slim AS runtime
+FROM python:3.11-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

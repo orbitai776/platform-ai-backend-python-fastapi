@@ -10,10 +10,10 @@ from typing import Any
 from flashtext import KeywordProcessor
 from unidecode import unidecode
 
-from app.domains.tourist.city import DESTINATION_CUES, best_city_match, extract_city_after_cues, extract_route_cities
-from app.domains.tourist.date import parse_date_to_iso
-from app.domains.tourist.people import extract_duration_days, extract_people_slots
-from app.domains.tourist.slots import DEFAULT_SLOT_VALUES, SLOT_KEYS
+from app.domain.tourist.city import DESTINATION_CUES, best_city_match, extract_city_after_cues, extract_route_cities
+from app.domain.tourist.date import parse_date_to_iso
+from app.domain.tourist.people import extract_duration_days, extract_people_slots
+from app.domain.tourist.slots import DEFAULT_SLOT_VALUES, SLOT_KEYS
 
 LOW_CONFIDENCE_THRESHOLD = 0.62
 HEURISTIC_FASTPATH_THRESHOLD = 0.85

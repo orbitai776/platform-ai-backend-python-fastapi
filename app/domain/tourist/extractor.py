@@ -5,18 +5,20 @@ from typing import Any
 
 from app.agents.base import SlotFillingAgent
 from app.agents.contracts import AgentContext, SlotExtractionResult
-from app.agents.schemas.finance import FINANCE_SLOT_SCHEMA, FINANCE_SYSTEM_PROMPT
-from app.domains.finance.heuristic import build_llm_cache_key, heuristic_extract_with_meta
-from app.domains.finance.slots import FinanceSlotData
+from app.domain.tourist.heuristic import (
+    HEURISTIC_FASTPATH_THRESHOLD,
+    LOW_CONFIDENCE_THRESHOLD,
+    build_llm_cache_key,
+    heuristic_extract_with_meta,
+)
+from app.domain.tourist.schema import TOURIST_SLOT_SCHEMA, TOURIST_SYSTEM_PROMPT
+from app.domain.tourist.slots import TouristSlotData
 from app.integrations.llm_client import LLMClient
 
 LOGGER = logging.getLogger(__name__)
 
-HEURISTIC_FASTPATH_THRESHOLD = 0.85
-LOW_CONFIDENCE_THRESHOLD = 0.6
 
-
-class FinanceSlotFillingAgent(SlotFillingAgent):
+class TouristSlotFillingAgent(SlotFillingAgent):
     def __init__(self, llm_client: LLMClient) -> None:
         self._llm_client = llm_client
 
@@ -35,13 +37,17 @@ class FinanceSlotFillingAgent(SlotFillingAgent):
         if heuristic_conf >= HEURISTIC_FASTPATH_THRESHOLD:
             if context.llm_cache is not None:
                 context.llm_cache[cache_key] = heuristic_result
-            return SlotExtractionResult(slot_update=heuristic_result, source="heuristic_fastpath", metadata=heuristic_meta)
+            return SlotExtractionResult(
+                slot_update=heuristic_result,
+                source="heuristic_fastpath",
+                metadata=heuristic_meta,
+            )
 
         try:
             extracted = await self._llm_client.extract_structured(
                 context.message,
-                FINANCE_SLOT_SCHEMA,
-                system_prompt=FINANCE_SYSTEM_PROMPT,
+                TOURIST_SLOT_SCHEMA,
+                system_prompt=TOURIST_SYSTEM_PROMPT,
                 validate_slot_data=True,
                 slot_validator=self._validate_slots,
             )
@@ -56,17 +62,24 @@ class FinanceSlotFillingAgent(SlotFillingAgent):
                 return SlotExtractionResult(
                     slot_update=merged,
                     source="llm",
-                    metadata={**heuristic_meta, "usage": extracted.get("usage")},
+                    metadata={
+                        **heuristic_meta,
+                        "usage": extracted.get("usage"),
+                    },
                 )
         except Exception:
-            LOGGER.exception("Finance LLM extraction failed, using heuristic fallback")
+            LOGGER.exception("LLM extraction failed, using heuristic fallback")
 
         if heuristic_conf < LOW_CONFIDENCE_THRESHOLD:
-            LOGGER.warning("Low-confidence finance extraction", extra={"heuristic_confidence": heuristic_conf})
+            LOGGER.warning("Low-confidence heuristic extraction", extra={"heuristic_confidence": heuristic_conf})
 
         if context.llm_cache is not None:
             context.llm_cache[cache_key] = heuristic_result
-        return SlotExtractionResult(slot_update=heuristic_result, source="heuristic_fallback", metadata=heuristic_meta)
+        return SlotExtractionResult(
+            slot_update=heuristic_result,
+            source="heuristic_fallback",
+            metadata=heuristic_meta,
+        )
 
     def _validate_slots(self, content: dict[str, Any]) -> dict[str, Any]:
-        return FinanceSlotData.model_validate(content).model_dump(mode="python")
+        return TouristSlotData.model_validate(content).model_dump(mode="python")

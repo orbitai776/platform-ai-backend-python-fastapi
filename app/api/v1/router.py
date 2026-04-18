@@ -5,7 +5,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 
 from app.agents.registry import get_agent_registry
-from app.orchestrators import get_chat_orchestrator
+from app.orchestrator import get_chat_orchestrator
 from app.api.v1.schemas import (
     ChatDeleteData,
     ChatDeleteResponse,
@@ -19,8 +19,8 @@ from app.api.v1.schemas import (
 )
 from app.infrastructure.session_store import delete_chat_session
 from app.integrations.llm_client import get_default_llm_client
-from app.integrations.openai_extractor import error_message_from_exception
-from app.services.chat_application import (
+from app.integrations.llm_adapter import error_message_from_exception
+from app.application.chat_service import (
     build_chat_state,
     build_initial_chat_turn,
     run_chat_turn,

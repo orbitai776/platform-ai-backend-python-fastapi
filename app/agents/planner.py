@@ -4,10 +4,34 @@ import logging
 
 from app.agents.base import PlannerAgent
 from app.agents.contracts import PlannerDecision
-from app.agents.schemas.planner import PLANNER_DECISION_SCHEMA, PLANNER_SYSTEM_PROMPT
 from app.integrations.llm_client import LLMClient
 
 LOGGER = logging.getLogger(__name__)
+
+PLANNER_SYSTEM_PROMPT = (
+    "You are a strict routing planner for a multi-domain assistant. "
+    "Choose one domain from the allowed list and return JSON only."
+)
+
+PLANNER_DECISION_SCHEMA = {
+    "text": {
+        "format": {
+            "type": "json_schema",
+            "name": "planner_decision",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["domain_name", "reason", "confidence"],
+                "properties": {
+                    "domain_name": {"type": "string"},
+                    "reason": {"type": "string"},
+                    "confidence": {"type": "number"},
+                },
+            },
+        }
+    }
+}
 
 
 class RuleBasedPlannerAgent(PlannerAgent):

@@ -139,7 +139,7 @@ async def call_extractor(
         if slot_validator is not None:
             content = slot_validator(content)
         else:
-            from app.domains.tourist.slots import TouristSlotData
+            from app.domain.tourist.slots import TouristSlotData
 
             content = TouristSlotData.model_validate(content).model_dump(mode="python")
 

@@ -5,13 +5,13 @@ from typing import Any
 from app.agents.base import DomainAgent
 from app.agents.contracts import DomainTurnResult
 from app.api.v1.schemas import ChatStatus
-from app.domains.tourist.slots import DEFAULT_SLOT_VALUES, REQUIRED_SLOTS, SLOT_QUESTION
-from app.domains.tourist.summary import build_tourist_summary_text
-from app.services.config import MAX_TURNS
+from app.application.config import MAX_TURNS
+from app.domain.finance.slots import DEFAULT_SLOT_VALUES, REQUIRED_SLOTS, SLOT_QUESTION
+from app.domain.finance.summary import build_finance_summary_text
 
 
-class TouristDomainAgent(DomainAgent):
-    domain_name = "tourist"
+class FinanceDomainAgent(DomainAgent):
+    domain_name = "finance"
 
     def default_slots(self) -> dict[str, Any]:
         return dict(DEFAULT_SLOT_VALUES)
@@ -23,21 +23,15 @@ class TouristDomainAgent(DomainAgent):
                 merged[key] = value
         return merged
 
-    def process_turn(
-        self,
-        slots: dict[str, Any],
-        turn_count: int,
-        stagnation_count: int,
-    ) -> DomainTurnResult:
+    def process_turn(self, slots: dict[str, Any], turn_count: int, stagnation_count: int) -> DomainTurnResult:
         missing = self.missing_slots(slots)
         status = ChatStatus.completed if not missing else ChatStatus.collecting
 
         if status == ChatStatus.completed:
-            reply = build_tourist_summary_text(slots)
             return DomainTurnResult(
                 status=status.value,
                 missing_slots=missing,
-                reply=reply,
+                reply=build_finance_summary_text(slots),
             )
 
         if turn_count >= MAX_TURNS or stagnation_count >= 2:
@@ -46,18 +40,16 @@ class TouristDomainAgent(DomainAgent):
                 status=status.value,
                 missing_slots=missing,
                 reply=(
-                    "Mình đang thiếu các thông tin sau: "
-                    f"{remaining}. Bạn vui lòng gửi đầy đủ các mục này trong một tin nhắn "
-                    "để mình hoàn tất bộ lọc nhanh hơn."
+                    "Minh dang thieu cac thong tin sau: "
+                    f"{remaining}. Ban gui day du trong mot tin nhan giup minh nhe."
                 ),
             )
 
         first_missing = missing[0]
-        reply = SLOT_QUESTION.get(first_missing, f"Bạn vui lòng cung cấp {first_missing}.")
         return DomainTurnResult(
             status=status.value,
             missing_slots=missing,
-            reply=reply,
+            reply=SLOT_QUESTION.get(first_missing, f"Ban vui long cung cap {first_missing}."),
         )
 
     def missing_slots(self, slots: dict[str, Any]) -> list[str]:
@@ -70,10 +62,10 @@ class TouristDomainAgent(DomainAgent):
     def _is_missing_slot_value(self, key: str, value: Any) -> bool:
         if value is None:
             return True
-        if key in {"duration_date", "adults", "children"}:
-            return isinstance(value, int) and value < 0
-        if key == "search_type":
+        if key == "intent":
             return not isinstance(value, str) or not value.strip()
-        if key in {"destination", "start_date"}:
+        if key == "amount":
+            return not isinstance(value, (int, float)) or value <= 0
+        if key == "currency":
             return not isinstance(value, str) or not value.strip()
         return False

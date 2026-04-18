@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from app.agents.registry import DEFAULT_DOMAIN_NAME
-from app.orchestrators import get_chat_orchestrator
-from app.services.config import MAX_MESSAGE_LENGTH
+from app.orchestrator import get_chat_orchestrator
+from app.application.config import MAX_MESSAGE_LENGTH
 
 
 def validate_message(message: str, field_name: str) -> str:

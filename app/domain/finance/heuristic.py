@@ -4,7 +4,7 @@ import re
 from datetime import date
 from typing import Any
 
-from app.domains.finance.slots import DEFAULT_SLOT_VALUES
+from app.domain.finance.slots import DEFAULT_SLOT_VALUES
 
 _INTENT_MAP = {
     "chi tieu": "expense",

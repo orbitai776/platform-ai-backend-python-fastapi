@@ -4,15 +4,15 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from app.agents.base import DomainAgent, PlannerAgent, SlotFillingAgent
-from app.agents.domain_finance import FinanceDomainAgent
-from app.agents.domain_tourist import TouristDomainAgent
 from app.agents.planner import LLMPlannerAgent, RuleBasedPlannerAgent
-from app.agents.schemas.finance import FINANCE_SLOT_SCHEMA, FINANCE_SYSTEM_PROMPT
-from app.agents.schemas.tourist import TOURIST_SLOT_SCHEMA, TOURIST_SYSTEM_PROMPT
-from app.agents.slot_filling_finance import FinanceSlotFillingAgent
-from app.agents.slot_filling_tourist import TouristSlotFillingAgent
-from app.domains.finance.slots import FinanceSlotData
-from app.domains.tourist.slots import TouristSlotData
+from app.domain.finance.agent import FinanceDomainAgent
+from app.domain.finance.extractor import FinanceSlotFillingAgent
+from app.domain.finance.schema import FINANCE_SLOT_SCHEMA, FINANCE_SYSTEM_PROMPT
+from app.domain.finance.slots import FinanceSlotData
+from app.domain.tourist.agent import TouristDomainAgent
+from app.domain.tourist.extractor import TouristSlotFillingAgent
+from app.domain.tourist.schema import TOURIST_SLOT_SCHEMA, TOURIST_SYSTEM_PROMPT
+from app.domain.tourist.slots import TouristSlotData
 from app.integrations.llm_client import get_default_llm_client
 
 DEFAULT_DOMAIN_NAME = "tourist"

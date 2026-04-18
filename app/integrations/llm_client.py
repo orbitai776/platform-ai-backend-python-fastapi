@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from app.integrations.openai_extractor import call_extractor
+from app.integrations.llm_adapter import call_extractor
 
 
 class LLMClient:
