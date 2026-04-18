@@ -4,12 +4,17 @@ import asyncio
 import json
 import os
 from json import JSONDecodeError
-from typing import Any
+from typing import Any, Callable
 
 from dotenv import load_dotenv
 from openai import APIConnectionError, APIStatusError, APITimeoutError, AsyncOpenAI
 
-from app.schemas import MODEL_AI, SlotData, SYSTEM_PROMPT
+MODEL_AI = "gpt-4o-mini"
+_DEFAULT_SYSTEM_PROMPT = (
+    "You are a strict slot extraction engine. Extract values from the user text and return "
+    "ONLY valid JSON that matches the provided schema. Keep unknown fields as null and do "
+    "not invent facts."
+)
 
 load_dotenv()
 
@@ -79,9 +84,11 @@ async def call_extractor(
     query: str,
     schema_payload: dict[str, Any],
     validate_slot_data: bool = False,
+    system_prompt: str | None = None,
+    slot_validator: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     openai_api_key = os.getenv("OPENAI_API_KEY")
-    openai_base_url = os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_URL")
+    openai_base_url = os.getenv("OPENAI_BASE_URL")
     model_name = os.getenv("OPENAI_MODEL", MODEL_AI)
     timeout_seconds = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "30"))
     max_retries = max(1, int(os.getenv("OPENAI_MAX_RETRIES", "3")))
@@ -90,7 +97,6 @@ async def call_extractor(
         raise ValueError("Thiếu biến môi trường OPENAI_API_KEY")
 
     text_payload = _normalize_text_payload(schema_payload)
-
     client = await _get_openai_client(openai_api_key, openai_base_url, timeout_seconds)
 
     response = None
@@ -101,7 +107,7 @@ async def call_extractor(
                 input=[
                     {
                         "role": "system",
-                        "content": SYSTEM_PROMPT,
+                        "content": system_prompt or _DEFAULT_SYSTEM_PROMPT,
                     },
                     {
                         "role": "user",
@@ -130,7 +136,12 @@ async def call_extractor(
     content = json.loads(output_text)
 
     if validate_slot_data:
-        content = SlotData.model_validate(content).model_dump(mode="python")
+        if slot_validator is not None:
+            content = slot_validator(content)
+        else:
+            from app.domains.tourist.slots import TouristSlotData
+
+            content = TouristSlotData.model_validate(content).model_dump(mode="python")
 
     return {
         "content": content,
