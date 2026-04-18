@@ -1,6 +1,12 @@
 fastapi==0.135.3
 uvicorn==0.43.0
 httpx==0.28.1
+openai==2.6.1
 pydantic==2.12.5
 python-dotenv==1.2.2
 redis==5.2.1
+unidecode==1.3.8
+underthesea==9.4.0
+rapidfuzz==3.13.0
+dateparser==1.2.2
+flashtext==2.7

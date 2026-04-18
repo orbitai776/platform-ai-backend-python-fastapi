@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
@@ -24,6 +25,7 @@ from app.schemas import (
     ChatTurnData,
     ChatTurnRequest,
     ChatTurnResponse,
+    ChatStatus,
     GenerateQueryData,
     GenerateQueryRequest,
     GenerateQueryResponse,
@@ -31,6 +33,32 @@ from app.schemas import (
 )
 
 app = FastAPI(title="Sprint02 Multi-turn Slot Filling", version="1.0.0")
+LOGGER = logging.getLogger(__name__)
+MAX_MESSAGE_LENGTH = 4000
+
+
+def _validate_message(message: str, field_name: str) -> str:
+    cleaned = message.strip()
+    if not cleaned:
+        raise ValueError(f"{field_name} không được để trống")
+    if len(cleaned) > MAX_MESSAGE_LENGTH:
+        raise ValueError(f"{field_name} vượt quá {MAX_MESSAGE_LENGTH} ký tự")
+    return cleaned
+
+
+def _build_reply(status: ChatStatus, missing: list[str], turn_count: int, stagnation_count: int) -> str:
+    if status == ChatStatus.completed:
+        return "Đã đủ thông tin. Tôi sẽ tạo truy vấn tìm kiếm tối ưu cho bạn."
+
+    if turn_count >= MAX_TURNS or stagnation_count >= 2:
+        remaining = ", ".join(missing)
+        return (
+            "Mình đang thiếu các thông tin sau: "
+            f"{remaining}. Bạn vui lòng gửi đầy đủ các mục này trong một tin nhắn "
+            "để mình hoàn tất bộ lọc nhanh hơn."
+        )
+
+    return next_question(missing)
 
 
 @app.get("/")
@@ -46,9 +74,16 @@ async def root() -> dict[str, object]:
 
 
 async def _run_chat_turn(session_id: str, message: str) -> ChatTurnData:
+    message = _validate_message(message, "message")
     session = await get_chat_session(session_id)
     if not session:
-        raise HTTPException(status_code=404, detail="Không tìm thấy phiên chat")
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "Không tìm thấy phiên chat. Phiên có thể đã hết hạn hoặc đã mất sau khi server reload/restart "
+                "(đang dùng in-memory store). Hãy tạo phiên mới hoặc cấu hình REDIS_URL để lưu bền vững."
+            ),
+        )
 
     session["turn_count"] = session.get("turn_count", 0) + 1
     session["history"].append({"role": "user", "content": message})
@@ -69,20 +104,15 @@ async def _run_chat_turn(session_id: str, message: str) -> ChatTurnData:
     missing = missing_slots(session["slots"])
     status = status_from_missing(missing)
 
-    if status == "completed":
-        reply = "Đã đủ thông tin. Tôi sẽ tạo truy vấn tìm kiếm tối ưu cho bạn."
-    else:
-        if session["turn_count"] >= MAX_TURNS or session.get("stagnation_count", 0) >= 2:
-            remaining = ", ".join(missing)
-            reply = (
-                "Mình đang thiếu các thông tin sau: "
-                f"{remaining}. Bạn vui lòng gửi đầy đủ các mục này trong một tin nhắn "
-                "để mình hoàn tất bộ lọc nhanh hơn."
-            )
-        else:
-            reply = next_question(missing)
+    reply = _build_reply(
+        status,
+        missing,
+        session["turn_count"],
+        session.get("stagnation_count", 0),
+    )
 
     session["history"].append({"role": "assistant", "content": reply})
+    session["history"] = session["history"][-20:]
     await save_chat_session(session_id, session)
 
     return ChatTurnData(
@@ -103,10 +133,12 @@ async def health() -> dict[str, str]:
 @app.post("/api/v1/generate-query-dynamic", response_model=GenerateQueryResponse)
 async def generate_query_dynamic(payload: GenerateQueryRequest) -> GenerateQueryResponse:
     try:
-        result = await call_extractor(payload.query, payload.schema_payload)
+        query = _validate_message(payload.query, "query")
+        result = await call_extractor(query, payload.schema_payload)
         data = GenerateQueryData(content=result["content"], usage=result.get("usage"))
         return GenerateQueryResponse(data=data, error=None)
     except Exception as exc:
+        LOGGER.exception("generate_query_dynamic failed")
         return GenerateQueryResponse(data=None, error=error_message_from_exception(exc))
 
 
@@ -123,8 +155,13 @@ async def chat_start(payload: ChatStartRequest) -> ChatTurnResponse:
     await save_chat_session(session_id, session)
 
     if payload.first_message and payload.first_message.strip():
-        data = await _run_chat_turn(session_id, payload.first_message)
-        return ChatTurnResponse(data=data, error=None)
+        try:
+            first_message = _validate_message(payload.first_message, "first_message")
+            data = await _run_chat_turn(session_id, first_message)
+            return ChatTurnResponse(data=data, error=None)
+        except Exception as exc:
+            LOGGER.exception("chat_start failed")
+            return ChatTurnResponse(data=None, error=error_message_from_exception(exc))
 
     missing = missing_slots(session["slots"])
     reply = next_question(missing)
@@ -145,10 +182,14 @@ async def chat_start(payload: ChatStartRequest) -> ChatTurnResponse:
 @app.post("/api/v1/chat/turn", response_model=ChatTurnResponse)
 async def chat_turn(payload: ChatTurnRequest) -> ChatTurnResponse:
     try:
-        data = await _run_chat_turn(payload.session_id, payload.message)
+        message = _validate_message(payload.message, "message")
+        data = await _run_chat_turn(payload.session_id, message)
         return ChatTurnResponse(data=data, error=None)
     except HTTPException as exc:
         return ChatTurnResponse(data=None, error=exc.detail)
+    except Exception as exc:
+        LOGGER.exception("chat_turn failed")
+        return ChatTurnResponse(data=None, error=error_message_from_exception(exc))
 
 
 @app.get("/api/v1/chat/{session_id}", response_model=ChatStateResponse)

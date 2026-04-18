@@ -1,7 +1,13 @@
 .git
 .gitignore
+.github/
 .venv/
 __pycache__/
 *.pyc
 .env
+README.md
 readme.md
+*.md
+.vscode/
+memories/
+docker-compose*.yml

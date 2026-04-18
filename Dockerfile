@@ -1,19 +1,29 @@
 FROM python:3.14-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /app
+
+# Build tools are installed only in builder stage for compiling any package without wheels.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential gcc g++ \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 COPY requirements-prod.txt ./
-RUN pip install --upgrade pip \
-    && pip install --no-cache-dir -r requirements-prod.txt
+RUN pip install --upgrade pip setuptools wheel \
+    && pip install --no-cache-dir --no-compile -r requirements-prod.txt \
+    && python -m pip uninstall -y pip setuptools wheel \
+    && find /opt/venv -type d -name "__pycache__" -prune -exec rm -rf {} + \
+    && find /opt/venv -type f -name "*.pyc" -delete \
+    && find /opt/venv -type d -name "tests" -prune -exec rm -rf {} +
 
 
-FROM python:3.14-slim
+FROM python:3.14-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -21,10 +31,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY --from=builder /opt/venv /opt/venv
-COPY app ./app
-COPY .env.example ./
+RUN useradd --create-home --home-dir /home/appuser --shell /bin/bash appuser
+
+COPY --from=builder --chown=appuser:appuser /opt/venv /opt/venv
+COPY --chown=appuser:appuser app ./app
+USER appuser
 
 EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
