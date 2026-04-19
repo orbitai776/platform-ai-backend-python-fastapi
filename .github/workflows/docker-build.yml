@@ -57,7 +57,7 @@ jobs:
           ENV: ${{ vars.ENV }}
           PORT: ${{ vars.PORT }}
           CONTAINER: ${{ vars.CONTAINER }}
-          OPENAI_URL: ${{ secrets.OPENAI_URL }}
+          OPENAI_BASE_URL: ${{ secrets.OPENAI_URL }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
@@ -82,7 +82,7 @@ jobs:
               -p $PORT:8000 \
               -e ENV=$ENV \
               -e PORT=8000 \
-              -e OPENAI_URL=$OPENAI_URL \
+              -e OPENAI_BASE_URL=$OPENAI_BASE_URL \
               -e OPENAI_API_KEY=$OPENAI_API_KEY \
               -e OPENAI_MODEL=$OPENAI_MODEL \
               -e REDIS_URL=$REDIS_URL \
