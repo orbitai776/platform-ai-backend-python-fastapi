@@ -11,3 +11,11 @@ readme.md
 .vscode/
 memories/
 docker-compose*.yml
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.log
+build/
+dist/

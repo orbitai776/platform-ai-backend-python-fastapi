@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 
 class ChatStatus(str, Enum):
@@ -13,10 +13,16 @@ class ChatStatus(str, Enum):
 
 class GenerateQueryRequest(BaseModel):
     query: str
-    schema_payload: dict[str, Any] = Field(alias="schema")
     service_name: str = "tourist"
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "query": "Tôi muốn đi Đà Lạt 3 ngày cho 2 người",
+                "service_name": "tourist",
+            }
+        }
+    )
 
 
 class GenerateQueryData(BaseModel):

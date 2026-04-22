@@ -19,7 +19,115 @@ _DEFAULT_SYSTEM_PROMPT = (
 load_dotenv()
 
 _OPENAI_CLIENT: AsyncOpenAI | None = None
+_OPENAI_CLIENT_CONFIG: tuple[str, str | None, float] | None = None
 _OPENAI_CLIENT_LOCK = asyncio.Lock()
+_JSON_SCHEMA_HINT_KEYS = {
+    "$schema",
+    "$defs",
+    "type",
+    "properties",
+    "required",
+    "items",
+    "enum",
+    "oneOf",
+    "anyOf",
+    "allOf",
+    "additionalProperties",
+}
+
+
+def _looks_like_json_schema(payload: dict[str, Any]) -> bool:
+    return any(key in payload for key in _JSON_SCHEMA_HINT_KEYS)
+
+
+def _infer_schema_from_value(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        if not value:
+            return {"type": "string"}
+        if _looks_like_json_schema(value):
+            return _normalize_json_schema_node(value)
+        return {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {key: _infer_schema_from_value(item) for key, item in value.items()},
+        }
+
+    if isinstance(value, list):
+        if not value:
+            return {"type": "array", "items": {"type": "string"}}
+        return {"type": "array", "items": _infer_schema_from_value(value[0])}
+
+    if isinstance(value, bool):
+        return {"type": "boolean"}
+    if isinstance(value, int):
+        return {"type": "integer"}
+    if isinstance(value, float):
+        return {"type": "number"}
+    return {"type": "string"}
+
+
+def _normalize_json_schema_node(node: Any) -> Any:
+    if isinstance(node, list):
+        return [_normalize_json_schema_node(item) for item in node]
+
+    if not isinstance(node, dict):
+        return {"type": "string"}
+
+    normalized: dict[str, Any] = {}
+    for key, value in node.items():
+        if key in {"properties", "$defs", "definitions", "patternProperties"} and isinstance(value, dict):
+            normalized[key] = {
+                child_key: _normalize_json_schema_node(child_value)
+                for child_key, child_value in value.items()
+            }
+        elif key in {"items", "contains", "if", "then", "else", "propertyNames", "not"} and isinstance(
+            value, (dict, list)
+        ):
+            normalized[key] = _normalize_json_schema_node(value)
+        elif key in {"oneOf", "anyOf", "allOf", "prefixItems"} and isinstance(value, list):
+            normalized[key] = [_normalize_json_schema_node(item) for item in value]
+        elif key == "additionalProperties" and isinstance(value, dict):
+            normalized[key] = _normalize_json_schema_node(value)
+        else:
+            normalized[key] = value
+
+    properties = normalized.get("properties")
+    if isinstance(properties, dict):
+        normalized["properties"] = {
+            key: value if isinstance(value, dict) else _infer_schema_from_value(value)
+            for key, value in properties.items()
+        }
+
+    schema_keywords = {"$ref", "enum", "const", "oneOf", "anyOf", "allOf", "not"}
+    if "type" not in normalized and not any(keyword in normalized for keyword in schema_keywords):
+        if isinstance(normalized.get("properties"), dict) or "required" in normalized:
+            normalized["type"] = "object"
+        elif "items" in normalized:
+            normalized["type"] = "array"
+        else:
+            normalized["type"] = "string"
+
+    if normalized.get("type") == "object":
+        if not isinstance(normalized.get("properties"), dict):
+            normalized["properties"] = {}
+        if "additionalProperties" not in normalized:
+            normalized["additionalProperties"] = False
+        property_keys = list(normalized["properties"].keys())
+        required = normalized.get("required")
+        if isinstance(required, list):
+            required_set = {item for item in required if isinstance(item, str)}
+            for key in property_keys:
+                required_set.add(key)
+            normalized["required"] = [key for key in property_keys if key in required_set]
+        else:
+            normalized["required"] = property_keys
+
+    if normalized.get("type") == "array":
+        items = normalized.get("items")
+        if not isinstance(items, dict):
+            normalized["items"] = {"type": "string"}
+
+    return normalized
 
 
 def _normalize_text_payload(schema_payload: dict[str, Any]) -> dict[str, Any]:
@@ -33,7 +141,29 @@ def _normalize_text_payload(schema_payload: dict[str, Any]) -> dict[str, Any]:
     if isinstance(text_payload, dict) and isinstance(text_payload.get("format"), dict):
         return {"format": text_payload["format"]}
 
-    raise ValueError("schema_payload phải có dạng {'format': {...}} hoặc {'text': {'format': {...}}}")
+    # Backward-compatible behavior for dynamic endpoint payloads.
+    # If the payload is already a JSON schema, keep it as-is.
+    # Otherwise treat it as a shorthand property map from Swagger/examples.
+    schema_object = schema_payload
+    if not _looks_like_json_schema(schema_payload):
+        schema_object = {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                key: _infer_schema_from_value(value)
+                for key, value in schema_payload.items()
+            },
+        }
+    schema_object = _normalize_json_schema_node(schema_object)
+
+    return {
+        "format": {
+            "type": "json_schema",
+            "name": "dynamic_schema",
+            "strict": True,
+            "schema": schema_object,
+        }
+    }
 
 
 def _extract_output_text(payload: dict[str, Any]) -> str:
@@ -52,20 +182,62 @@ def _extract_output_text(payload: dict[str, Any]) -> str:
     raise KeyError("Cannot find output text in upstream response")
 
 
+def _normalize_openai_base_url(base_url: str | None) -> str | None:
+    if base_url is None:
+        return None
+
+    normalized = base_url.strip().rstrip("/")
+    if not normalized:
+        return None
+
+    # AsyncOpenAI expects base URL at API root (for example: .../v1).
+    if normalized.endswith("/responses"):
+        normalized = normalized[: -len("/responses")]
+    return normalized
+
+
 async def _get_openai_client(api_key: str, base_url: str | None, timeout: float) -> AsyncOpenAI:
     global _OPENAI_CLIENT
+    global _OPENAI_CLIENT_CONFIG
 
-    if _OPENAI_CLIENT is not None:
+    target_config = (api_key, base_url, timeout)
+
+    if _OPENAI_CLIENT is not None and _OPENAI_CLIENT_CONFIG == target_config:
         return _OPENAI_CLIENT
 
     async with _OPENAI_CLIENT_LOCK:
-        if _OPENAI_CLIENT is None:
+        if _OPENAI_CLIENT is None or _OPENAI_CLIENT_CONFIG != target_config:
             _OPENAI_CLIENT = AsyncOpenAI(
                 api_key=api_key,
                 base_url=base_url,
                 timeout=timeout,
             )
+            _OPENAI_CLIENT_CONFIG = target_config
     return _OPENAI_CLIENT
+
+
+def _extract_api_status_message(exc: APIStatusError) -> str | None:
+    response = getattr(exc, "response", None)
+    if response is None:
+        return None
+
+    try:
+        payload = response.json()
+    except Exception:
+        return None
+
+    if isinstance(payload, dict):
+        error_obj = payload.get("error")
+        if isinstance(error_obj, dict):
+            message = error_obj.get("message")
+            if isinstance(message, str) and message.strip():
+                return message.strip()
+
+        message = payload.get("message")
+        if isinstance(message, str) and message.strip():
+            return message.strip()
+
+    return None
 
 
 def error_message_from_exception(exc: Exception) -> str:
@@ -74,6 +246,9 @@ def error_message_from_exception(exc: Exception) -> str:
     if isinstance(exc, (KeyError, IndexError, TypeError, JSONDecodeError)):
         return f"Định dạng dữ liệu trả về từ upstream không hợp lệ: {exc}"
     if isinstance(exc, APIStatusError):
+        detail = _extract_api_status_message(exc)
+        if detail:
+            return f"OpenAI trả về lỗi HTTP: {exc.status_code} - {detail}"
         return f"OpenAI trả về lỗi HTTP: {exc.status_code}"
     if isinstance(exc, (APIConnectionError, APITimeoutError)):
         return f"Lỗi mạng khi gọi OpenAI: {exc}"
@@ -88,7 +263,7 @@ async def call_extractor(
     slot_validator: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     openai_api_key = os.getenv("OPENAI_API_KEY")
-    openai_base_url = os.getenv("OPENAI_BASE_URL")
+    openai_base_url = _normalize_openai_base_url(os.getenv("OPENAI_BASE_URL"))
     model_name = os.getenv("OPENAI_MODEL", MODEL_AI)
     timeout_seconds = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "30"))
     max_retries = max(1, int(os.getenv("OPENAI_MAX_RETRIES", "3")))
