@@ -50,7 +50,7 @@ async def generate_query_dynamic(payload: GenerateQueryRequest) -> GenerateQuery
         llm_client = get_default_llm_client()
         result = await llm_client.extract_structured(
             query,
-            payload.schema_payload,
+            extraction_config.default_schema,
             system_prompt=extraction_config.system_prompt,
         )
         data = GenerateQueryData(content=result["content"], usage=result.get("usage"))
