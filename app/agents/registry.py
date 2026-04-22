@@ -5,10 +5,14 @@ from typing import Any, Callable
 
 from app.agents.base import DomainAgent, PlannerAgent, SlotFillingAgent
 from app.agents.planner import LLMPlannerAgent, RuleBasedPlannerAgent
-from app.domain.finance.agent import FinanceDomainAgent
-from app.domain.finance.extractor import FinanceSlotFillingAgent
-from app.domain.finance.schema import FINANCE_SLOT_SCHEMA, FINANCE_SYSTEM_PROMPT
-from app.domain.finance.slots import FinanceSlotData
+from app.domain.booking.agent import BookingDomainAgent
+from app.domain.booking.extractor import BookingSlotFillingAgent
+from app.domain.booking.schema import BOOKING_SLOT_SCHEMA, BOOKING_SYSTEM_PROMPT
+from app.domain.booking.slots import BookingSlotData
+from app.domain.inventory.agent import InventoryDomainAgent
+from app.domain.inventory.extractor import InventorySlotFillingAgent
+from app.domain.inventory.schema import INVENTORY_SLOT_SCHEMA, INVENTORY_SYSTEM_PROMPT
+from app.domain.inventory.slots import InventorySlotData
 from app.domain.tourist.agent import TouristDomainAgent
 from app.domain.tourist.extractor import TouristSlotFillingAgent
 from app.domain.tourist.schema import TOURIST_SLOT_SCHEMA, TOURIST_SYSTEM_PROMPT
@@ -69,12 +73,16 @@ class AgentRegistry:
 _DEFAULT_REGISTRY: AgentRegistry | None = None
 
 
-def _validate_finance_slots(content: dict[str, Any]) -> dict[str, Any]:
-    return FinanceSlotData.model_validate(content).model_dump(mode="python")
+def _validate_inventory_slots(content: dict[str, Any]) -> dict[str, Any]:
+    return InventorySlotData.model_validate(content).model_dump(mode="python")
 
 
 def _validate_tourist_slots(content: dict[str, Any]) -> dict[str, Any]:
     return TouristSlotData.model_validate(content).model_dump(mode="python")
+
+
+def _validate_booking_slots(content: dict[str, Any]) -> dict[str, Any]:
+    return BookingSlotData.model_validate(content).model_dump(mode="python")
 
 
 def get_agent_registry() -> AgentRegistry:
@@ -84,9 +92,13 @@ def get_agent_registry() -> AgentRegistry:
 
     llm_client = get_default_llm_client()
     domain_bundles = {
-        "finance": DomainAgentBundle(
-            domain_agent=FinanceDomainAgent(),
-            slot_filling_agent=FinanceSlotFillingAgent(llm_client=llm_client),
+        "booking": DomainAgentBundle(
+            domain_agent=BookingDomainAgent(),
+            slot_filling_agent=BookingSlotFillingAgent(llm_client=llm_client),
+        ),
+        "inventory": DomainAgentBundle(
+            domain_agent=InventoryDomainAgent(),
+            slot_filling_agent=InventorySlotFillingAgent(llm_client=llm_client),
         ),
         "tourist": DomainAgentBundle(
             domain_agent=TouristDomainAgent(),
@@ -94,10 +106,15 @@ def get_agent_registry() -> AgentRegistry:
         ),
     }
     extraction_configs = {
-        "finance": DomainExtractionConfig(
-            system_prompt=FINANCE_SYSTEM_PROMPT,
-            default_schema=FINANCE_SLOT_SCHEMA,
-            slot_validator=_validate_finance_slots,
+        "booking": DomainExtractionConfig(
+            system_prompt=BOOKING_SYSTEM_PROMPT,
+            default_schema=BOOKING_SLOT_SCHEMA,
+            slot_validator=_validate_booking_slots,
+        ),
+        "inventory": DomainExtractionConfig(
+            system_prompt=INVENTORY_SYSTEM_PROMPT,
+            default_schema=INVENTORY_SLOT_SCHEMA,
+            slot_validator=_validate_inventory_slots,
         ),
         "tourist": DomainExtractionConfig(
             system_prompt=TOURIST_SYSTEM_PROMPT,

@@ -49,9 +49,15 @@ class RuleBasedPlannerAgent(PlannerAgent):
             )
 
         normalized = message.lower()
-        if "domain:finance" in normalized and "finance" in self._available_domains:
+        if "domain:booking" in normalized and "booking" in self._available_domains:
             return PlannerDecision(
-                domain_name="finance",
+                domain_name="booking",
+                reason="explicit_domain_hint",
+                confidence=0.98,
+            )
+        if "domain:inventory" in normalized and "inventory" in self._available_domains:
+            return PlannerDecision(
+                domain_name="inventory",
                 reason="explicit_domain_hint",
                 confidence=0.98,
             )
@@ -62,22 +68,36 @@ class RuleBasedPlannerAgent(PlannerAgent):
                 confidence=0.98,
             )
 
-        finance_keywords = (
-            "chi tieu",
-            "tiet kiem",
-            "dau tu",
-            "ngan sach",
-            "tai chinh",
-            "budget",
-            "finance",
-            "expense",
-            "saving",
-            "investment",
+        booking_keywords = (
+            "dat ban",
+            "nha hang",
+            "quan an",
+            "restaurant",
+            "ban cho",
+            "booking table",
         )
-        if any(keyword in normalized for keyword in finance_keywords) and "finance" in self._available_domains:
+        if any(keyword in normalized for keyword in booking_keywords) and "booking" in self._available_domains:
             return PlannerDecision(
-                domain_name="finance",
-                reason="matched_finance_keywords",
+                domain_name="booking",
+                reason="matched_booking_keywords",
+                confidence=0.88,
+            )
+
+        inventory_keywords = (
+            "ton kho",
+            "kiem ke",
+            "dat kho",
+            "giu kho",
+            "reserve kho",
+            "so luong",
+            "inventory",
+            "stock",
+            "warehouse",
+        )
+        if any(keyword in normalized for keyword in inventory_keywords) and "inventory" in self._available_domains:
+            return PlannerDecision(
+                domain_name="inventory",
+                reason="matched_inventory_keywords",
                 confidence=0.86,
             )
 

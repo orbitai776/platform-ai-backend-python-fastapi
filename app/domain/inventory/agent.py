@@ -6,12 +6,12 @@ from app.agents.base import DomainAgent
 from app.agents.contracts import DomainTurnResult
 from app.api.v1.schemas import ChatStatus
 from app.application.config import MAX_TURNS
-from app.domain.finance.slots import DEFAULT_SLOT_VALUES, REQUIRED_SLOTS, SLOT_QUESTION
-from app.domain.finance.summary import build_finance_summary_text
+from app.domain.inventory.slots import DEFAULT_SLOT_VALUES, REQUIRED_SLOTS, SLOT_QUESTION
+from app.domain.inventory.summary import build_inventory_summary_text
 
 
-class FinanceDomainAgent(DomainAgent):
-    domain_name = "finance"
+class InventoryDomainAgent(DomainAgent):
+    domain_name = "inventory"
 
     def default_slots(self) -> dict[str, Any]:
         return dict(DEFAULT_SLOT_VALUES)
@@ -19,7 +19,7 @@ class FinanceDomainAgent(DomainAgent):
     def merge_slots(self, current: dict[str, Any], update: dict[str, Any]) -> dict[str, Any]:
         merged = dict(current)
         for key, value in update.items():
-            if key in merged and not self._is_missing_slot_value(key, value):
+            if key in merged and not self._is_missing_slot_value(key, value, merged):
                 merged[key] = value
         return merged
 
@@ -31,7 +31,7 @@ class FinanceDomainAgent(DomainAgent):
             return DomainTurnResult(
                 status=status.value,
                 missing_slots=missing,
-                reply=build_finance_summary_text(slots),
+                reply=build_inventory_summary_text(slots),
             )
 
         if turn_count >= MAX_TURNS or stagnation_count >= 2:
@@ -40,8 +40,8 @@ class FinanceDomainAgent(DomainAgent):
                 status=status.value,
                 missing_slots=missing,
                 reply=(
-                    "Minh dang thieu cac thong tin sau: "
-                    f"{remaining}. Ban gui day du trong mot tin nhan giup minh nhe."
+                    "Mình đang thiếu các thông tin sau: "
+                    f"{remaining}. Bạn gửi đầy đủ trong một tin nhắn giúp mình nhé."
                 ),
             )
 
@@ -49,23 +49,22 @@ class FinanceDomainAgent(DomainAgent):
         return DomainTurnResult(
             status=status.value,
             missing_slots=missing,
-            reply=SLOT_QUESTION.get(first_missing, f"Ban vui long cung cap {first_missing}."),
+            reply=SLOT_QUESTION.get(first_missing, f"Bạn vui lòng cung cấp {first_missing}."),
         )
 
     def missing_slots(self, slots: dict[str, Any]) -> list[str]:
         missing: list[str] = []
         for key in REQUIRED_SLOTS:
-            if self._is_missing_slot_value(key, slots.get(key)):
+            if self._is_missing_slot_value(key, slots.get(key), slots):
                 missing.append(key)
+
         return missing
 
-    def _is_missing_slot_value(self, key: str, value: Any) -> bool:
+    def _is_missing_slot_value(self, key: str, value: Any, slots: dict[str, Any]) -> bool:
         if value is None:
             return True
-        if key == "intent":
+        if key in {"item_name", "warehouse", "booking_date", "booking_time"}:
             return not isinstance(value, str) or not value.strip()
-        if key == "amount":
-            return not isinstance(value, (int, float)) or value <= 0
-        if key == "currency":
-            return not isinstance(value, str) or not value.strip()
+        if key == "quantity":
+            return not isinstance(value, int) or value <= 0
         return False
